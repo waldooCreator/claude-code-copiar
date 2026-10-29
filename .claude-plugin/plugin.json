@@ -1,0 +1,6 @@
+{
+  "name": "copiar",
+  "version": "0.1.0",
+  "description": "Encierra cada bloque de código de las respuestas de Claude en un recuadro con un botón Copiar, y le pide a Claude que ponga en un bloque todo lo que sea para copiar.",
+  "author": { "name": "waldooCreator" }
+}

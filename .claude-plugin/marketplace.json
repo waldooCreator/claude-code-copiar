@@ -1,0 +1,14 @@
+{
+  "name": "copiar",
+  "description": "Copiar: un botón Copiar en cada bloque de código de Claude Code.",
+  "owner": {
+    "name": "waldooCreator"
+  },
+  "plugins": [
+    {
+      "name": "copiar",
+      "source": "./",
+      "description": "Un botón Copiar en cada bloque de código de las respuestas de Claude."
+    }
+  ]
+}
