@@ -55,6 +55,43 @@ test('cada bloque sale en un recuadro con Copiar, y Copiar copia el bloque exact
   expect(copiado).toEqual(['SELECT TOP 5 *\nFROM TblTerceros;', 'ls'])
 })
 
+// Un equipo donde solo existen las herramientas de `hay`; las demás no se encuentran.
+function equipo(on: On, hay: string[], llamadas: { argv: string[]; stdin: string; env?: Record<string, string> }[]): void {
+  on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text key="motor">⏺ {e.props.text}</Text>
+  })
+  on('process.run', ($, e) => {
+    if (!hay.includes(e.argv[0]!)) throw new Error(`${e.argv[0]}: no existe`)
+    llamadas.push({ argv: [...e.argv], stdin: e.init?.stdin ?? '', env: e.init?.env })
+    return { value: { exitCode: 0, stdout: '', stderr: '' } } as never
+  })
+}
+
+const TILDES = '```text\nCanción de acción: ñandú, pingüino, ¿qué? ¡sí!\n```'
+
+test('en macOS pbcopy recibe un idioma UTF-8 para no dañar las tildes', async ($, on) => {
+  const llamadas: { argv: string[]; stdin: string; env?: Record<string, string> }[] = []
+  equipo(on, ['pbcopy'], llamadas)
+  const ui = await $.ui.mount({ plugin: 'copiar', surface: 'terminal', component: 'AssistantMessage', props: { text: TILDES, isFirstOfReply: true } as never })
+  await ui.press({ key: 'copiar-0' })
+  await ui.unmount()
+  expect(llamadas).toHaveLength(1)
+  expect(llamadas[0]!.stdin).toBe('Canción de acción: ñandú, pingüino, ¿qué? ¡sí!')
+  expect(llamadas[0]!.env?.LC_ALL).toBe('en_US.UTF-8')
+})
+
+test('en Windows copia con PowerShell en UTF-8, nunca con clip.exe', async ($, on) => {
+  const llamadas: { argv: string[]; stdin: string; env?: Record<string, string> }[] = []
+  equipo(on, ['powershell.exe', 'clip.exe', 'clip'], llamadas)
+  const ui = await $.ui.mount({ plugin: 'copiar', surface: 'terminal', component: 'AssistantMessage', props: { text: TILDES, isFirstOfReply: true } as never })
+  await ui.press({ key: 'copiar-0' })
+  await ui.unmount()
+  expect(llamadas.map(l => l.argv[0])).toEqual(['powershell.exe'])
+  expect(llamadas[0]!.argv.join(' ')).toContain('UTF8.GetString')
+  expect(llamadas[0]!.stdin).toBe('Canción de acción: ñandú, pingüino, ¿qué? ¡sí!')
+})
+
 test('un bloque que todavía se está escribiendo no tiene botón', async ($, on) => {
   motor(on, [])
   const ui = await $.ui.mount({ plugin: 'copiar', surface: 'terminal', component: 'AssistantMessage', props: { text: 'Mira:\n```sql\nSELECT', isFirstOfReply: true } as never })

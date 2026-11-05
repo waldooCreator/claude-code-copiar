@@ -10,15 +10,30 @@ const INSTRUCCION =
   'si lo tiene, sin explicaciones dentro: la terminal dibuja cada bloque en un recuadro con un botón «Copiar» que ' +
   'copia el contenido exacto del bloque. Lo que no es para copiar va fuera de los bloques.'
 
+// Windows: clip.exe lee la entrada en la página de códigos de la consola y daña
+// las tildes; PowerShell lee los bytes tal cual y los decodifica como UTF-8.
+const POWERSHELL =
+  '$m = New-Object IO.MemoryStream; [Console]::OpenStandardInput().CopyTo($m); ' +
+  'Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString($m.ToArray()))'
+
 // Muchas terminales (Ptyxis/VTE entre ellas) no dejan copiar por OSC 52:
 // primero las herramientas del sistema, y $.ui.copy de respaldo.
-const COPIAR: string[][] = [['wl-copy'], ['xclip', '-selection', 'clipboard'], ['xsel', '--clipboard', '--input'], ['pbcopy'], ['clip.exe'], ['clip']]
+const COPIAR: { argv: string[]; env?: Record<string, string> }[] = [
+  { argv: ['wl-copy'] },
+  { argv: ['xclip', '-selection', 'clipboard'] },
+  { argv: ['xsel', '--clipboard', '--input'] },
+  // Sin un idioma UTF-8, pbcopy lee la entrada como MacRoman y daña las tildes.
+  { argv: ['pbcopy'], env: { LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' } },
+  // powershell.exe también sirve desde WSL.
+  { argv: ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', POWERSHELL] },
+  { argv: ['pwsh', '-NoProfile', '-NonInteractive', '-Command', POWERSHELL] },
+]
 
 async function copiar($: EngineInterface, texto: string, superficie: RenderSurface): Promise<boolean> {
   if (superficie === 'terminal') {
-    for (const argv of COPIAR) {
+    for (const { argv, env } of COPIAR) {
       try {
-        if ((await $.process.run(argv, { stdin: texto, timeoutMs: 5000 })).exitCode === 0) return true
+        if ((await $.process.run(argv, { stdin: texto, env, timeoutMs: 5000 })).exitCode === 0) return true
       } catch {
         // esa herramienta no existe aquí: la siguiente
       }

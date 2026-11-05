@@ -50,7 +50,7 @@ En Linux, el botón usa la herramienta del portapapeles del sistema. Instala una
 | Wayland | `wl-clipboard` |
 | X11 | `xclip` o `xsel` |
 
-En macOS (`pbcopy`) y Windows (`clip`) ya viene incluida. Si no encuentra ninguna, copia con el portapapeles de Claude Code, que funciona en las terminales que lo permiten.
+En macOS (`pbcopy`) y Windows (PowerShell) ya viene incluida. Si no encuentra ninguna, copia con el portapapeles de Claude Code, que funciona en las terminales que lo permiten.
 
 ## Cómo funciona
 
