@@ -1,7 +1,8 @@
-import type { EngineInterface, Register, RenderElement, RenderSurface } from 'claude-code'
+import type { Register, RenderElement } from 'claude-code'
 
 import { partir } from './bloques'
 import type { Trozo } from './bloques'
+import { consejo, copiar, diagnosticar } from './portapapeles'
 
 // Lo que Claude lee en cada sesión: así lo que es para copiar llega en un bloque.
 const INSTRUCCION =
@@ -10,45 +11,27 @@ const INSTRUCCION =
   'si lo tiene, sin explicaciones dentro: la terminal dibuja cada bloque en un recuadro con un botón «Copiar» que ' +
   'copia el contenido exacto del bloque. Lo que no es para copiar va fuera de los bloques.'
 
-// Windows: clip.exe lee la entrada en la página de códigos de la consola y daña
-// las tildes; PowerShell lee los bytes tal cual y los decodifica como UTF-8.
-const POWERSHELL =
-  '$m = New-Object IO.MemoryStream; [Console]::OpenStandardInput().CopyTo($m); ' +
-  'Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString($m.ToArray()))'
-
-// Muchas terminales (Ptyxis/VTE entre ellas) no dejan copiar por OSC 52:
-// primero las herramientas del sistema, y $.ui.copy de respaldo.
-const COPIAR: { argv: string[]; env?: Record<string, string> }[] = [
-  { argv: ['wl-copy'] },
-  { argv: ['xclip', '-selection', 'clipboard'] },
-  { argv: ['xsel', '--clipboard', '--input'] },
-  // Sin un idioma UTF-8, pbcopy lee la entrada como MacRoman y daña las tildes.
-  { argv: ['pbcopy'], env: { LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' } },
-  // powershell.exe también sirve desde WSL.
-  { argv: ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', POWERSHELL] },
-  { argv: ['pwsh', '-NoProfile', '-NonInteractive', '-Command', POWERSHELL] },
-]
-
-async function copiar($: EngineInterface, texto: string, superficie: RenderSurface): Promise<boolean> {
-  if (superficie === 'terminal') {
-    for (const { argv, env } of COPIAR) {
-      try {
-        if ((await $.process.run(argv, { stdin: texto, env, timeoutMs: 5000 })).exitCode === 0) return true
-      } catch {
-        // esa herramienta no existe aquí: la siguiente
-      }
-    }
-  }
-  try {
-    return (await $.ui.copy({ text: texto, surface: superficie })).isCopied
-  } catch {
-    return false
-  }
-}
-
 const lineas = (n: number) => (n === 1 ? '1 línea' : `${n} líneas`)
 
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'copiar-diagnostico', description: 'Revisa qué usa el botón Copiar en este equipo y hace una copia de prueba' })
+    await $.tool.register({
+      name: 'diagnostico',
+      description:
+        'Revisa el mod Copiar en este equipo: sistema detectado, qué herramienta de portapapeles encuentra (wl-copy, xsel, xclip, PowerShell) ' +
+        'y hace una copia de prueba (deja un texto de prueba en el portapapeles). Úsala al instalar el mod (INSTALAR.md) o cuando el botón Copiar falla.',
+      inputSchema: { type: 'object', properties: {} },
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'copiar-diagnostico' }, async $ => ({ text: await diagnosticar($) }))
+
+  on('tool.call', { tool: 'mcp__copiar__diagnostico' as never }, async $ => ({ result: await diagnosticar($) })).catch(() => ({
+    result: 'El diagnóstico falló dentro del mod. Ejecuta claude plugin validate sobre la carpeta del mod.',
+  }))
+
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
     return { sections: [...r.sections, { id: 'copiar:bloques', text: INSTRUCCION, scope: 'session' }] }
@@ -73,8 +56,8 @@ export const register: Register = on => {
             label="Copiar"
             variant="primary"
             onPress={async press => {
-              const ok = await copiar($, t.codigo, press.surface)
-              $.ui.toast(ok ? `Copiado: ${lineas(t.codigo.split('\n').length)}${t.lenguaje ? ` de ${t.lenguaje}` : ''}.` : 'No pude copiar: instala wl-clipboard (Wayland) o xclip (X11).')
+              const { ok, sistema } = await copiar($, t.codigo, press.surface)
+              $.ui.toast(ok ? `Copiado: ${lineas(t.codigo.split('\n').length)}${t.lenguaje ? ` de ${t.lenguaje}` : ''}.` : `No pude copiar: ${consejo(sistema)}`)
             }}
           />,
         )
